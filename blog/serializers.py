@@ -1,5 +1,3 @@
-import json
-
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -13,7 +11,14 @@ class BlogSerializer(serializers.ModelSerializer):
     what the React admin dashboard and public blog pages read directly
     off the post object (post.coverImage, post.categoryLabel, etc.).
     `updated_at` / `created_at` stay snake_case because that's what the
-    dashboard table already uses for its date formatting."""
+    dashboard table already uses for its date formatting.
+
+    Note: tags / seoKeywords / body arrive as JSON strings when the request
+    is multipart/form-data (the frontend JSON.stringify()s them). DRF's
+    JSONField parses those strings itself, so no manual decoding is needed
+    here. Do NOT json.loads() them in to_internal_value — putting a Python
+    list back into the QueryDict gets turned into a single-quoted string,
+    which fails with "Value must be valid JSON."."""
 
     categoryLabel = serializers.CharField(source="category_label", read_only=True)
     categoryLabelOverride = serializers.CharField(
@@ -71,24 +76,6 @@ class BlogSerializer(serializers.ModelSerializer):
     def get_date(self, obj):
         moment = obj.publish_at or obj.created_at
         return f"{moment.strftime('%b')} {moment.day}, {moment.strftime('%Y')}" if moment else None
-
-    def to_internal_value(self, data):
-        # When the request is multipart/form-data (because a cover/social
-        # image file is attached), the frontend JSON.stringify()s tags,
-        # seoKeywords and body before appending them — decode those back
-        # into real lists here.
-        if hasattr(data, "_mutable"):
-            data._mutable = True
-        elif hasattr(data, "copy"):
-            data = data.copy()
-        for field in ("tags", "seoKeywords", "body"):
-            raw = data.get(field)
-            if isinstance(raw, str):
-                try:
-                    data[field] = json.loads(raw)
-                except (TypeError, ValueError):
-                    pass
-        return super().to_internal_value(data)
 
 
 class BlogListSerializer(BlogSerializer):
