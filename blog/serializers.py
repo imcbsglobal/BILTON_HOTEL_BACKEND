@@ -1,9 +1,32 @@
+import os
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from .models import Blog
 
 User = get_user_model()
+
+
+# Accept ANY image format (PNG, JPG, WebP, GIF, AVIF, HEIC, SVG, BMP, ...).
+# DRF's ImageField runs the upload through Pillow, which rejects formats the
+# installed Pillow build can't decode (commonly WebP/AVIF on older servers).
+# A plain FileField skips that check; we just confirm it is an image file.
+ALLOWED_IMAGE_EXTENSIONS = {
+    "png", "jpg", "jpeg", "jpe", "jfif", "webp", "gif", "avif", "heic", "heif",
+    "svg", "bmp", "tif", "tiff", "ico",
+}
+
+
+class AnyImageField(serializers.FileField):
+    def to_internal_value(self, data):
+        file = super().to_internal_value(data)
+        content_type = (getattr(data, "content_type", "") or "").lower()
+        ext = os.path.splitext(file.name or "")[1].lower().lstrip(".")
+        if not (content_type.startswith("image/") or ext in ALLOWED_IMAGE_EXTENSIONS):
+            raise serializers.ValidationError("Please upload an image file.")
+        return file
+
 
 
 class BlogSerializer(serializers.ModelSerializer):
@@ -24,12 +47,12 @@ class BlogSerializer(serializers.ModelSerializer):
     categoryLabelOverride = serializers.CharField(
         source="category_label_override", required=False, allow_blank=True
     )
-    coverImage = serializers.ImageField(source="cover_image", required=False, allow_null=True)
+    coverImage = AnyImageField(source="cover_image", required=False, allow_null=True)
     coverImageAlt = serializers.CharField(source="cover_image_alt", required=False, allow_blank=True)
     coverImageCaption = serializers.CharField(
         source="cover_image_caption", required=False, allow_blank=True
     )
-    socialShareImage = serializers.ImageField(
+    socialShareImage = AnyImageField(
         source="social_share_image", required=False, allow_null=True
     )
     readTime = serializers.CharField(source="read_time", required=False, allow_blank=True)
